@@ -3,13 +3,12 @@ import json
 import yaml
 import torch
 import shutil
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Form
+import glob
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Form
 from fastapi.responses import JSONResponse
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import time
-import threading
-import logging
 from io import StringIO
 import sys
 
@@ -19,6 +18,7 @@ from dao.EyeRecognitionSampleHistoryDAO import EyeRecognitionSampleHistoryDAO
 from entity.EyeRecognitionSampleHistory import TrainDetectionHistory
 from entity.EyeRecognitionModel import EyeRecognitionModel
 from ultralytics import YOLO
+from db_connection import get_connection
 
 # Define the router
 router = APIRouter(prefix="/training", tags=["Training"])
@@ -73,11 +73,10 @@ def train_yolov11_model(
     batch_size: int,
     image_size: int,
     learning_rate: float,
-    pretrained_model_id: Optional[int] = None,
     job_id: str = None
 ):
     """
-    Function to train YOLOv11 model
+    Function to train YOLOv11 model using model with ID 1 as pretrained
     """
     # Set up logging
     if job_id is None:
@@ -96,11 +95,10 @@ def train_yolov11_model(
                 return
             
             dataset_path = dataset['dataTrainPath']
-            yaml_path = os.path.join(dataset_path, 'data.yaml')
+            yaml_path = dataset['detailFilePath']
             
-            if not os.path.exists(yaml_path):
-                print(f"Error: data.yaml not found in dataset directory")
-                return
+            print(f"Dataset path: {dataset_path}")
+            print(f"Using YAML file: {yaml_path}")
             
             # Create training history record
             train_history = TrainDetectionHistory(
@@ -115,30 +113,24 @@ def train_yolov11_model(
             history_id = EyeRecognitionSampleHistoryDAO.create_train_history(train_history)
             print(f"Created training history record with ID {history_id}")
             
-            # Set up YOLOv11 training
-            print("Initializing YOLO model...")
-            
-            # If using pretrained model
-            pretrained_weights = None
-            if pretrained_model_id:
-                model_info = EyeRecognitionModelDAO.get_model_by_id(pretrained_model_id)
-                if model_info:
-                    pretrained_weights = os.path.join(BASE_DIR, model_info['modelLink'])
-                    print(f"Using pretrained model: {model_info['modelName']}")
+            # Always use model ID 1 as pretrained
+            model_info = EyeRecognitionModelDAO.get_model_by_id(1)
+            if model_info:
+                pretrained_weights = os.path.join(BASE_DIR, model_info['modelLink'])
+                print(f"Using model ID 1 as pretrained model: {model_info['modelName']}")
+            else:
+                # Fallback to YOLO default if model 1 not found
+                pretrained_weights = 'yolov8n.pt'
+                print(f"Model ID 1 not found. Using default YOLOv8n")
             
             # Start training
-            print("Starting YOLO training...")
-            
             try:
-                # Load model or create new one
-                if pretrained_weights and os.path.exists(pretrained_weights):
-                    print(f"Loading pretrained model from {pretrained_weights}")
-                    model = YOLO(pretrained_weights)
-                else:
-                    print("Initializing new YOLO model")
-                    model = YOLO('yolov8n.pt')  # Default model
+                # Load model
+                print(f"Loading model from {pretrained_weights}")
+                model = YOLO(pretrained_weights)
                 
                 # Train model
+                print(f"Starting training with YAML: {yaml_path}")
                 results = model.train(
                     data=yaml_path,
                     epochs=epochs,
@@ -148,27 +140,39 @@ def train_yolov11_model(
                     device='0' if torch.cuda.is_available() else 'cpu'
                 )
                 
-                # Get best model path
-                best_model_path = str(results.best)
-                
+                # Lấy đường dẫn đến thư mục lưu kết quả
+                save_dir = getattr(results, 'save_dir', None)
+                if save_dir:
+                    best_model_path = os.path.join(save_dir, 'weights', 'best.pt')
+                    last_model_path = os.path.join(save_dir, 'weights', 'last.pt')
+                else:
+                    # Fallback nếu không tìm thấy save_dir
+                    run_dirs = glob.glob(os.path.join('runs', 'detect', 'train*'))
+                    if run_dirs:
+                        latest_run = max(run_dirs, key=os.path.getmtime)
+                        best_model_path = os.path.join(latest_run, 'weights', 'best.pt')
+                        last_model_path = os.path.join(latest_run, 'weights', 'last.pt')
+                    else:
+                        raise Exception("Could not find model weights directory")
+
+                # Kiểm tra và sử dụng best.pt nếu có, không thì dùng last.pt
+                if os.path.exists(best_model_path):
+                    chosen_model_path = best_model_path
+                    print(f"Using best model from: {best_model_path}")
+                elif os.path.exists(last_model_path):
+                    chosen_model_path = last_model_path
+                    print(f"Best model not found, using last model from: {last_model_path}")
+                else:
+                    raise Exception("Neither best nor last model found")
+
                 # Save the model
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 model_name = f"eye_detector_yolo_{timestamp}"
                 model_filename = f"{model_name}.pt"
                 model_path = os.path.join(MODEL_DIR, model_filename)
-                
-                if os.path.exists(best_model_path):
-                    shutil.copy(best_model_path, model_path)
-                    print(f"Best model copied from {best_model_path} to {model_path}")
-                else:
-                    print(f"Warning: Best model not found at {best_model_path}")
-                    # Use the final model
-                    final_model_path = str(results.last)
-                    if os.path.exists(final_model_path):
-                        shutil.copy(final_model_path, model_path)
-                        print(f"Final model copied from {final_model_path} to {model_path}")
-                    else:
-                        raise Exception(f"Neither best nor final model found")
+
+                shutil.copy(chosen_model_path, model_path)
+                print(f"Model copied from {chosen_model_path} to {model_path}")
                 
                 # Calculate relative path for database
                 model_rel_path = os.path.relpath(model_path, BASE_DIR)
@@ -204,8 +208,8 @@ def train_yolov11_model(
                 model_filename = f"{model_name}.pt"
                 model_path = os.path.join(MODEL_DIR, model_filename)
                 
-                # Use pretrained model as fallback if available
-                if pretrained_weights and os.path.exists(pretrained_weights):
+                # Use pretrained model as fallback
+                if os.path.exists(pretrained_weights):
                     shutil.copy(pretrained_weights, model_path)
                     print(f"Using pretrained model as fallback")
                 else:
@@ -261,47 +265,241 @@ async def get_training_history_by_id(history_id: int):
 
 @router.post("/start")
 async def start_training(
-    background_tasks: BackgroundTasks,
     dataset_id: int = Form(...),
     epochs: int = Form(...),
     batch_size: int = Form(...),
     image_size: int = Form(...),
-    learning_rate: float = Form(...),
-    pretrained_model_id: Optional[int] = Form(None)
+    learning_rate: float = Form(...)
 ):
     """
-    Start a new training job
+    Start a new training job using model ID 1 as pretrained and wait for it to complete
     """
     # Validate dataset
     dataset = EyeRecognitionSampleDAO.get_data_train_by_id(dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail=f"Dataset with ID {dataset_id} not found")
     
-    # Validate pretrained model if provided
-    if pretrained_model_id:
-        model = EyeRecognitionModelDAO.get_model_by_id(pretrained_model_id)
-        if not model:
-            raise HTTPException(status_code=404, detail=f"Pretrained model with ID {pretrained_model_id} not found")
+    # Kiểm tra xem file YAML có tồn tại không
+    yaml_path = dataset.get('detailFilePath')
+    if not yaml_path or not os.path.exists(yaml_path):
+        raise HTTPException(status_code=400, detail=f"YAML file not found at {yaml_path}")
     
     # Generate a job ID
     job_id = f"training_job_{int(time.time())}"
     
-    # Start training in background
-    background_tasks.add_task(
-        train_yolov11_model,
-        dataset_id,
-        epochs,
-        batch_size,
-        image_size,
-        learning_rate,
-        pretrained_model_id,
-        job_id
-    )
+    # Thực hiện training ngay lập tức (không sử dụng background_tasks)
+    job_logs = StringIO()
+    sys.stdout = job_logs
     
-    return {
-        "message": "Training started",
-        "job_id": job_id
-    }
+    try:
+        print(f"Starting training job {job_id}")
+        print(f"Dataset ID: {dataset_id}")
+        print(f"Training parameters: epochs={epochs}, batch_size={batch_size}, image_size={image_size}, learning_rate={learning_rate}")
+        
+        dataset_path = dataset['dataTrainPath']
+        print(f"Dataset path: {dataset_path}")
+        print(f"Using YAML file: {yaml_path}")
+        
+        # Kiểm tra và điều chỉnh file YAML
+        try:
+            with open(yaml_path, 'r') as file:
+                yaml_content = yaml.safe_load(file)
+            
+            # Tìm thư mục thực tế chứa train/valid
+            data_subdir = None
+            for item in os.listdir(dataset_path):
+                item_path = os.path.join(dataset_path, item)
+                if os.path.isdir(item_path):
+                    # Kiểm tra xem thư mục này có chứa train/valid không
+                    if os.path.exists(os.path.join(item_path, 'train')) or os.path.exists(os.path.join(item_path, 'valid')):
+                        data_subdir = item
+                        break
+            
+            # Nếu tìm thấy thư mục con chứa dữ liệu, điều chỉnh đường dẫn
+            if data_subdir:
+                print(f"Found data subdirectory: {data_subdir}")
+                new_path = os.path.join(dataset_path, data_subdir)
+                yaml_content['path'] = new_path
+                
+                # Kiểm tra xem train/valid có nằm trong thư mục hiện tại không
+                if 'train' in yaml_content and yaml_content['train'].startswith('../'):
+                    yaml_content['train'] = yaml_content['train'].replace('../', './')
+                if 'val' in yaml_content and yaml_content['val'].startswith('../'):
+                    yaml_content['val'] = yaml_content['val'].replace('../', './')
+                
+                # Lưu file YAML đã điều chỉnh
+                with open(yaml_path, 'w') as file:
+                    yaml.dump(yaml_content, file)
+                
+                print(f"Updated YAML file with correct paths: {yaml_content}")
+        except Exception as e:
+            print(f"Error adjusting YAML file: {str(e)}")
+        
+        # Create training history record
+        train_history = TrainDetectionHistory(
+            epochs=epochs,
+            batchSize=batch_size,
+            imageSize=image_size,
+            learningRate=learning_rate,
+            tblDetectEyeDataTrainId=dataset_id,
+            tblEyeDetectionModelId=None  # Will set this after training is complete
+        )
+        
+        history_id = EyeRecognitionSampleHistoryDAO.create_train_history(train_history)
+        print(f"Created training history record with ID {history_id}")
+        
+        # Always use model ID 1 as pretrained
+        model_info = EyeRecognitionModelDAO.get_model_by_id(1)
+        if model_info:
+            pretrained_weights = os.path.join(BASE_DIR, model_info['modelLink'])
+            print(f"Using model ID 1 as pretrained model: {model_info['modelName']}")
+        else:
+            # Fallback to YOLO default if model 1 not found
+            pretrained_weights = 'yolov8n.pt'
+            print(f"Model ID 1 not found. Using default YOLOv8n")
+        
+        # Start training
+        model_record = None
+        model_id = None
+        
+        try:
+            # Load model
+            print(f"Loading model from {pretrained_weights}")
+            model = YOLO(pretrained_weights)
+            
+            # Train model
+            print(f"Starting training with YAML: {yaml_path}")
+            results = model.train(
+                data=yaml_path,
+                epochs=epochs,
+                batch=batch_size,
+                imgsz=image_size,
+                lr0=learning_rate,
+                device='0' if torch.cuda.is_available() else 'cpu'
+            )
+            
+            # Lấy đường dẫn đến thư mục lưu kết quả
+            save_dir = getattr(results, 'save_dir', None)
+            if save_dir:
+                best_model_path = os.path.join(save_dir, 'weights', 'best.pt')
+                last_model_path = os.path.join(save_dir, 'weights', 'last.pt')
+            else:
+                # Fallback nếu không tìm thấy save_dir
+                run_dirs = glob.glob(os.path.join('runs', 'detect', 'train*'))
+                if run_dirs:
+                    latest_run = max(run_dirs, key=os.path.getmtime)
+                    best_model_path = os.path.join(latest_run, 'weights', 'best.pt')
+                    last_model_path = os.path.join(latest_run, 'weights', 'last.pt')
+                else:
+                    raise Exception("Could not find model weights directory")
+
+            # Kiểm tra và sử dụng best.pt nếu có, không thì dùng last.pt
+            if os.path.exists(best_model_path):
+                chosen_model_path = best_model_path
+                print(f"Using best model from: {best_model_path}")
+            elif os.path.exists(last_model_path):
+                chosen_model_path = last_model_path
+                print(f"Best model not found, using last model from: {last_model_path}")
+            else:
+                raise Exception("Neither best nor last model found")
+
+            # Save the model
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            model_name = f"eye_detector_yolo_{timestamp}"
+            model_filename = f"{model_name}.pt"
+            model_path = os.path.join(MODEL_DIR, model_filename)
+
+            shutil.copy(chosen_model_path, model_path)
+            print(f"Model copied from {chosen_model_path} to {model_path}")
+            
+            # Calculate relative path for database
+            model_rel_path = os.path.relpath(model_path, BASE_DIR)
+            print(f"Model saved to {model_path} (rel: {model_rel_path})")
+            
+            # Get mAP metric from results
+            metrics = results.results_dict
+            map_metric = metrics.get('metrics/mAP50-95(B)', 0.0)
+            print(f"Model mAP: {map_metric}")
+            
+            # Create model record
+            model_record = EyeRecognitionModel(
+                modelName=model_name,
+                mapMetric=map_metric,
+                createDate=datetime.now(),
+                isActive=0,  # Not active by default
+                modelLink=model_rel_path
+            )
+            
+            model_id = EyeRecognitionModelDAO.create_model(model_record)
+            print(f"Created model record with ID {model_id}")
+            
+            # Update training history with model ID
+            train_history.tblEyeDetectionModelId = model_id
+            EyeRecognitionSampleHistoryDAO.update_train_history(history_id, train_history)
+            
+        except Exception as train_error:
+            print(f"Error during training: {str(train_error)}")
+            
+            # Create a fallback model if training fails
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            model_name = f"eye_detector_fallback_{timestamp}"
+            model_filename = f"{model_name}.pt"
+            model_path = os.path.join(MODEL_DIR, model_filename)
+            
+            # Use pretrained model as fallback
+            if os.path.exists(pretrained_weights):
+                shutil.copy(pretrained_weights, model_path)
+                print(f"Using pretrained model as fallback")
+            else:
+                # Create empty file as placeholder
+                with open(model_path, 'w') as f:
+                    f.write("Fallback model - Training failed")
+                print(f"Created empty fallback model")
+            
+            model_rel_path = os.path.relpath(model_path, BASE_DIR)
+            
+            # Create model record for fallback
+            model_record = EyeRecognitionModel(
+                modelName=model_name + " (Training Failed)",
+                mapMetric=0.0,
+                createDate=datetime.now(),
+                isActive=0,  # Not active
+                modelLink=model_rel_path
+            )
+            
+            model_id = EyeRecognitionModelDAO.create_model(model_record)
+            print(f"Created fallback model record with ID {model_id}")
+            
+            # Update training history with model ID
+            train_history.tblEyeDetectionModelId = model_id
+            EyeRecognitionSampleHistoryDAO.update_train_history(history_id, train_history)
+        
+        print(f"Training job {job_id} completed")
+        
+        # Lưu logs cho tham chiếu sau này
+        training_logs[job_id] = job_logs.getvalue()
+        
+        # Khôi phục stdout
+        sys.stdout = sys.__stdout__
+        
+        # Lấy thông tin model đã train để trả về
+        if model_id:
+            model_details = EyeRecognitionModelDAO.get_model_by_id(model_id)
+        else:
+            model_details = None
+        
+        # Trả về thông tin
+        return {
+            "message": "Training completed",
+            "job_id": job_id,
+            "history_id": history_id,
+            "logs": training_logs[job_id],
+            "model": model_details
+        }
+        
+    except Exception as e:
+        sys.stdout = sys.__stdout__
+        raise HTTPException(status_code=500, detail=f"Error during training: {str(e)}")
 
 
 @router.get("/logs/{job_id}")
