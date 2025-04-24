@@ -18,6 +18,7 @@ from dao.EyeRecognitionSampleDAO import EyeRecognitionSampleDAO
 from dao.EyeRecognitionSampleHistoryDAO import EyeRecognitionSampleHistoryDAO
 from entity.EyeRecognitionSampleHistory import TrainDetectionHistory
 from entity.EyeRecognitionModel import EyeRecognitionModel
+from ultralytics import YOLO
 
 # Define the router
 router = APIRouter(prefix="/training", tags=["Training"])
@@ -26,10 +27,12 @@ router = APIRouter(prefix="/training", tags=["Training"])
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_DIR = os.path.join(BASE_DIR, "models")
 DATASET_DIR = os.path.join(BASE_DIR, "datasets")
+UPLOADS_DIR = "/home/quydat09/iris_rcog/eye-recognition-system/uploads"
 
 # Make sure the directories exist
 os.makedirs(MODEL_DIR, exist_ok=True)
 os.makedirs(DATASET_DIR, exist_ok=True)
+os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 # Dictionary to store training logs for each training job
 training_logs = {}
@@ -113,67 +116,126 @@ def train_yolov11_model(
             print(f"Created training history record with ID {history_id}")
             
             # Set up YOLOv11 training
-            print("Initializing YOLOv11 model...")
+            print("Initializing YOLO model...")
             
             # If using pretrained model
             pretrained_weights = None
             if pretrained_model_id:
                 model_info = EyeRecognitionModelDAO.get_model_by_id(pretrained_model_id)
                 if model_info:
-                    pretrained_weights = model_info['modelLink']
+                    pretrained_weights = os.path.join(BASE_DIR, model_info['modelLink'])
                     print(f"Using pretrained model: {model_info['modelName']}")
             
             # Start training
-            print("Starting YOLOv11 training...")
+            print("Starting YOLO training...")
             
-            # Here we'd normally call the YOLOv11 training code
-            # For demonstration, we're using a mock training process:
-            model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
+            try:
+                # Load model or create new one
+                if pretrained_weights and os.path.exists(pretrained_weights):
+                    print(f"Loading pretrained model from {pretrained_weights}")
+                    model = YOLO(pretrained_weights)
+                else:
+                    print("Initializing new YOLO model")
+                    model = YOLO('yolov8n.pt')  # Default model
+                
+                # Train model
+                results = model.train(
+                    data=yaml_path,
+                    epochs=epochs,
+                    batch=batch_size,
+                    imgsz=image_size,
+                    lr0=learning_rate,
+                    device='0' if torch.cuda.is_available() else 'cpu'
+                )
+                
+                # Get best model path
+                best_model_path = str(results.best)
+                
+                # Save the model
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                model_name = f"eye_detector_yolo_{timestamp}"
+                model_filename = f"{model_name}.pt"
+                model_path = os.path.join(MODEL_DIR, model_filename)
+                
+                if os.path.exists(best_model_path):
+                    shutil.copy(best_model_path, model_path)
+                    print(f"Best model copied from {best_model_path} to {model_path}")
+                else:
+                    print(f"Warning: Best model not found at {best_model_path}")
+                    # Use the final model
+                    final_model_path = str(results.last)
+                    if os.path.exists(final_model_path):
+                        shutil.copy(final_model_path, model_path)
+                        print(f"Final model copied from {final_model_path} to {model_path}")
+                    else:
+                        raise Exception(f"Neither best nor final model found")
+                
+                # Calculate relative path for database
+                model_rel_path = os.path.relpath(model_path, BASE_DIR)
+                print(f"Model saved to {model_path} (rel: {model_rel_path})")
+                
+                # Get mAP metric
+                metrics = results.results_dict
+                map_metric = metrics.get('metrics/mAP50-95(B)', 0.0)
+                print(f"Model mAP: {map_metric}")
+                
+                # Create model record
+                model_record = EyeRecognitionModel(
+                    modelName=model_name,
+                    mapMetric=map_metric,
+                    createDate=datetime.now(),
+                    isActive=0,  # Not active by default
+                    modelLink=model_rel_path
+                )
+                
+                model_id = EyeRecognitionModelDAO.create_model(model_record)
+                print(f"Created model record with ID {model_id}")
+                
+                # Update training history with model ID
+                train_history.tblEyeDetectionModelId = model_id
+                EyeRecognitionSampleHistoryDAO.update_train_history(history_id, train_history)
+                
+            except Exception as train_error:
+                print(f"Error during training: {str(train_error)}")
+                
+                # Create a fallback model if training fails
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                model_name = f"eye_detector_fallback_{timestamp}"
+                model_filename = f"{model_name}.pt"
+                model_path = os.path.join(MODEL_DIR, model_filename)
+                
+                # Use pretrained model as fallback if available
+                if pretrained_weights and os.path.exists(pretrained_weights):
+                    shutil.copy(pretrained_weights, model_path)
+                    print(f"Using pretrained model as fallback")
+                else:
+                    # Create empty file as placeholder
+                    with open(model_path, 'w') as f:
+                        f.write("Fallback model - Training failed")
+                    print(f"Created empty fallback model")
+                
+                model_rel_path = os.path.relpath(model_path, BASE_DIR)
+                
+                # Create model record for fallback
+                model_record = EyeRecognitionModel(
+                    modelName=model_name + " (Training Failed)",
+                    mapMetric=0.0,
+                    createDate=datetime.now(),
+                    isActive=0,  # Not active
+                    modelLink=model_rel_path
+                )
+                
+                model_id = EyeRecognitionModelDAO.create_model(model_record)
+                print(f"Created fallback model record with ID {model_id}")
+                
+                # Update training history with model ID
+                train_history.tblEyeDetectionModelId = model_id
+                EyeRecognitionSampleHistoryDAO.update_train_history(history_id, train_history)
             
-            # Mock some training output
-            for epoch in range(epochs):
-                time.sleep(1)  # Simulate training time
-                print(f"Epoch {epoch+1}/{epochs}, loss: {5.0 - 4.0 * (epoch+1) / epochs:.4f}, mAP: {0.3 + 0.6 * (epoch+1) / epochs:.4f}")
-            
-            # Save the model
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            model_name = f"eye_detector_yolov11_{timestamp}"
-            model_filename = f"{model_name}.pt"
-            model_path = os.path.join(MODEL_DIR, model_filename)
-            
-            # In a real implementation, we'd save the actual trained model
-            # model.save(model_path)
-            # For demonstration, we'll just copy a pretrained model or create an empty file
-            if pretrained_weights and os.path.exists(pretrained_weights):
-                shutil.copy(pretrained_weights, model_path)
-            else:
-                # Create empty model file for demonstration
-                with open(model_path, 'w') as f:
-                    f.write("Mock YOLOv11 model")
-            
-            print(f"Model saved to {model_path}")
-            
-            # Create model record
-            map_metric = 0.85  # Mock mAP metric
-            model_record = EyeRecognitionModel(
-                modelName=model_name,
-                mapMetric=map_metric,
-                createDate=datetime.now(),
-                isActive=0,  # Not active by default
-                modelLink=model_path
-            )
-            
-            model_id = EyeRecognitionModelDAO.create_model(model_record)
-            print(f"Created model record with ID {model_id}")
-            
-            # Update training history with model ID
-            train_history.tblEyeDetectionModelId = model_id
-            EyeRecognitionSampleHistoryDAO.update_train_history(history_id, train_history)
-            
-            print(f"Training job {job_id} completed successfully")
+            print(f"Training job {job_id} completed")
             
         except Exception as e:
-            print(f"Error in training job: {str(e)}")
+            print(f"Unhandled error in training job: {str(e)}")
             # Log the error but don't re-raise it so the thread can complete
 
 

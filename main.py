@@ -32,10 +32,10 @@ app.include_router(model_router)
 app.include_router(sample_router)
 app.include_router(history_router)
 
-# Path constants from environment variables or defaults
+# Path constants
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOADS_DIR = os.path.join(BASE_DIR, os.getenv("UPLOADS_DIR", "../eye-recognition-system/uploads"))
-MODEL_DIR = os.path.join(BASE_DIR, os.getenv("MODEL_DIR", "models"))
+UPLOADS_DIR = "/home/quydat09/iris_rcog/eye-recognition-system/uploads"
+MODEL_DIR = os.path.join(BASE_DIR, "models")
 
 # Make sure the necessary directories exist
 os.makedirs(UPLOADS_DIR, exist_ok=True)

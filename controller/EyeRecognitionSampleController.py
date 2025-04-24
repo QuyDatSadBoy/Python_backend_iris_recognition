@@ -18,12 +18,14 @@ router = APIRouter(prefix="/samples", tags=["Samples"])
 
 # Path constants
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-UPLOADS_DIR = os.path.join(BASE_DIR, "../eye-recognition-system/uploads")
+UPLOADS_DIR = "/home/quydat09/iris_rcog/eye-recognition-system/uploads"
 DATASET_DIR = os.path.join(BASE_DIR, "datasets")
 
 # Make sure the directories exist
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 os.makedirs(DATASET_DIR, exist_ok=True)
+os.makedirs(os.path.join(UPLOADS_DIR, "eyes"), exist_ok=True)
+os.makedirs(os.path.join(UPLOADS_DIR, "faces"), exist_ok=True)
 
 
 class DatasetMetadata(BaseModel):
