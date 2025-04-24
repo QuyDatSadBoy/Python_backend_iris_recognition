@@ -1,0 +1,16 @@
+names:
+- Iris
+- Ojo Der
+- Ojo Izq
+- Pupila
+nc: 4
+path: /home/quydat09/iris_rcog/eye-recognition-service/datasets/dat/DataYolo11_minisize
+roboflow:
+  license: CC BY 4.0
+  project: cau001
+  url: https://universe.roboflow.com/pupiup-rjvfv/cau001/dataset/1
+  version: 1
+  workspace: pupiup-rjvfv
+test: ./test/images
+train: ./train/images
+val: ./valid/images
