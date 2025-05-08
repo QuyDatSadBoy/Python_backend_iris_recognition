@@ -32,15 +32,6 @@ os.makedirs(os.path.join(UPLOADS_DIR, "eyes"), exist_ok=True)
 os.makedirs(os.path.join(UPLOADS_DIR, "faces"), exist_ok=True)
 
 
-class DatasetMetadata(BaseModel):
-    name: str
-    description: Optional[str] = None
-    classes: List[str]
-    total_images: int
-    train_images: int
-    val_images: int
-    test_images: Optional[int] = None
-
 
 def find_yaml_file(directory):
     """
@@ -165,7 +156,6 @@ def process_yolo_dataset(dataset_path, dataset_id):
             return 0
     
     return 0
-
 
 
 @router.get("/datasets")
