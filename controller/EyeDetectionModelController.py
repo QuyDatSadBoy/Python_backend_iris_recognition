@@ -86,25 +86,8 @@ async def detectEyesImage(
     modelId: Optional[int] = Form(None)
 ) -> dict:
     """POST /models/detect - Detect eyes trong ảnh"""
-    # Lấy model active hoặc theo ID
-    if modelId:
-        model_info = EyeDetectionModelDAO.getEyeDetectionModelById(modelId)
-    else:
-        # Lấy model active
-        connection = get_connection()
-        try:
-            with connection.cursor() as cursor:
-                sql = "SELECT * FROM tblEyeDetectionModel WHERE isActive = 1 LIMIT 1"
-                cursor.execute(sql)
-                result = cursor.fetchone()
-                model_info = EyeDetectionModel(**result) if result else None
-        finally:
-            connection.close()
-    
-    if not model_info:
-        raise HTTPException(status_code=404, detail="No model found")
-    
-    # Load image
+    model_info = EyeDetectionModelDAO.getEyeDetectionModelById(modelId)
+
     contents = await image.read()
     nparr = np.frombuffer(contents, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -112,17 +95,14 @@ async def detectEyesImage(
     if img is None:
         raise HTTPException(status_code=400, detail="Invalid image")
     
-    # Load YOLO model
     model_path = os.path.join(BASE_DIR, model_info.modelLink)
     try:
         model = YOLO(model_path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
     
-    # Inference
     results = model(img)
     
-    # Save annotated image
     annotated_img = results[0].plot(conf=0.6)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     face_img_filename = f"face_{timestamp}.jpg"
@@ -130,7 +110,6 @@ async def detectEyesImage(
     
     cv2.imwrite(face_img_path, annotated_img)
     
-    # Extract eye regions
     eye_regions = []
     
     for i, box in enumerate(results[0].boxes):
@@ -139,7 +118,7 @@ async def detectEyesImage(
         class_id = int(box.cls[0]) if box.cls.numel() > 0 else -1
         class_name = results[0].names[class_id] if class_id in results[0].names else "unknown"
         
-        if confidence > 0.6:
+        if confidence > 0.5:
             eye_regions.append({
                 "id": i,
                 "confidence": confidence,
@@ -179,5 +158,4 @@ async def batchDetectEyes(
     modelId: Optional[int] = Form(None)
 ) -> dict:
     """POST /models/batch-detect - Batch detect eyes"""
-    # (Code tương tự như trên nhưng xử lý nhiều ảnh)
     pass

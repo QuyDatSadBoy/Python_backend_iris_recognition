@@ -81,6 +81,11 @@ class EyeDetectionModelDAO:
         connection = get_connection()
         try:
             with connection.cursor() as cursor:
+                # Xóa các bản ghi tham chiếu trong bảng TrainDetectionHistory trước
+                sql_history = "DELETE FROM tblTrainDetectionHistory WHERE tblEyeDetectionModelId = %s"
+                cursor.execute(sql_history, (id,))
+                
+                # Sau đó mới xóa model
                 sql = "DELETE FROM tblEyeDetectionModel WHERE id = %s"
                 cursor.execute(sql, (id,))
                 connection.commit()

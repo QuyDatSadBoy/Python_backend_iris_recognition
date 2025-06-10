@@ -1,3 +1,402 @@
-models/
-runs/
-datasets/
+# =============================================================================
+# GITIGNORE CHO DỰ ÁN NHẬN DẠNG MẮT (EYE RECOGNITION SERVICE)
+# =============================================================================
+
+# Thư mục dữ liệu và mô hình
+models/                     # Mô hình đã huấn luyện
+runs/                       # Kết quả huấn luyện YOLO
+datasets/                   # Dữ liệu huấn luyện
+uploads/                    # File upload từ user
+checkpoints/                # Model checkpoints
+weights/                    # File trọng số mô hình
+
+# =============================================================================
+# PYTHON
+# =============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff
+instance/
+.webassets-cache
+
+# Scrapy stuff
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# pdm
+.pdm.toml
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# =============================================================================
+# MACHINE LEARNING & AI
+# =============================================================================
+
+# TensorBoard logs
+tensorboard_logs/
+logs/
+lightning_logs/
+
+# Weights & Biases
+wandb/
+
+# MLflow
+mlruns/
+
+# Keras
+*.h5
+*.hdf5
+
+# PyTorch
+*.pth
+*.pt
+*.ckpt
+
+# TensorFlow
+*.pb
+saved_model/
+*.tfrecord
+
+# ONNX models
+*.onnx
+
+# Pickle files
+*.pkl
+*.pickle
+
+# NumPy
+*.npy
+*.npz
+
+# Jupyter Notebook outputs
+*checkpoint.ipynb
+
+# =============================================================================
+# DATABASE
+# =============================================================================
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Database backups
+*.sql
+*.dump
+
+# =============================================================================
+# IDE & EDITORS
+# =============================================================================
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# =============================================================================
+# OPERATING SYSTEM
+# =============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.tmp
+*.temp
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# =============================================================================
+# MEDIA FILES
+# =============================================================================
+
+# Image files (trừ sample images)
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.tif
+*.webp
+*.svg
+*.ico
+
+# Video files
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+*.webm
+*.mkv
+
+# Audio files
+*.mp3
+*.wav
+*.flac
+*.aac
+
+# =============================================================================
+# CONFIG & SECRETS
+# =============================================================================
+
+# Environment variables
+.env.local
+.env.development
+.env.test
+.env.production
+
+# API keys và secrets
+secrets.json
+config.json
+credentials.json
+.secrets/
+
+# SSL certificates
+*.pem
+*.key
+*.crt
+*.cert
+
+# =============================================================================
+# TEMPORARY & CACHE FILES
+# =============================================================================
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.cache
+
+# Logs
+*.log
+logs/
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# =============================================================================
+# DOCKER
+# =============================================================================
+
+# Docker
+.dockerignore
+
+# =============================================================================
+# GIT
+# =============================================================================
+
+# Git hooks
+.git/hooks/
+
+# =============================================================================
+# DOCUMENTATION
+# =============================================================================
+
+# Generated documentation
+docs/build/
+docs/_build/
+
+# =============================================================================
+# CUSTOM PROJECT FILES
+# =============================================================================
+
+# Test images và data
+test_images/
+sample_data/
+demo_data/
+
+# Configuration files
+config/local/
+config/development/
+
+# Performance monitoring
+profiling_results/
+performance_logs/
+
+# Experiment tracking
+experiments/
+results/
+
+# =============================================================================
+# KẾT THÚC GITIGNORE
+# =============================================================================
